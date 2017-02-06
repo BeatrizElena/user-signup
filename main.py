@@ -14,9 +14,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
+
 import webapp2
+import string
 import re
 import cgi
+
+# def escape_html(s):
+#     return cgi.escape(s, quote = True)
 
 # html boilerplate for the top of every page
 page_header = """
@@ -36,33 +41,45 @@ page_header = """
     </h1>
 """
 
+username_regex = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
+password_regex = re.compile(r"^.{3,20}$")
+email_regex = re.compile(r"^[\S]+@[\S]+.[\S]+$")
+
+def valid_username(username):
+    # username_regex.findall('')
+    return username and username_regex.match(username)
+
+def valid_password(password):
+    return password and password_regex.match(password)
+
+def valid_email(email):
+    return not email or email_regex.match(email)
+
 # html boilerplate for the bottom of every page
 page_footer = """
 </body>
 </html>
 """
-
 # a form for user signup
-add_form = """
+form = """
 <form method="post">
     <table>
         <tr>
             <td>
                 <label for="username">Username</label>
-                <span class="error"></span>
             </td>
             <td>
-                <input type="text" name="username"/>
+                <input type="text" name="username" placeholder="Enter Username" value="%(username)s" required>
+                <span class="error">%(errorUsername)s</span>
             </td>
         </tr>
         <tr>
             <td>
                 <label for="password">Password</label>
-                <span class="error"></span>
             </td>
             <td>
-                <input type="text" name="password"/>
-                <span class="error"></span>
+                <input type="password" placeholder="Enter Password" name="password" required>
+                <span class="error">%(errorPassword)s</span>
             </td>
         </tr>
         <tr>
@@ -70,135 +87,90 @@ add_form = """
                 <label for="verify">Verify Password</label>
             </td>
             <td>
-                <input type="text" name="verify"/>
-                <span class="error"></span>
+                <input type="password" placeholder="Re-Enter Password" name="verify"  required>
+                <span class="error">%(errorVerify)s</span>
             </td>
         </tr>
         <tr>
             <td>
                 <label for="email">E-mail (optional)</label>
-                <span class="error"></span>
             </td>
             <td>
-                <input type="email" name="email"/>
-                <span class="error"></span>
+                <input type="email" name="email" value="%(email)s">
+                <span class="error">%(errorEmail)s</span>
             </td>
         </tr>
     </table>
-    <input type="submit"/>
+        <input type="submit">
 </form>
 """
-username_regex = re.compile(r"^[a-zA-Z0-9_-]{3,20}$")
-password_regex = re.compile(r"^.{3,20}$")
-email_regex = re.compile(r"^[\S]+@[\S]+.[\S]+$")
 
-class MainHandler(webapp2.RequestHandler):
+class SignUp(webapp2.RequestHandler):
+    def write_form(self, errorUsername="", errorPassword="", errorVerify="", errorEmail="", username="", email=""):
+        self.response.out.write(form % {"errorUsername": errorUsername, "errorPassword":errorPassword, "errorVerify":errorVerify, "errorEmail":errorEmail, "username": username, "email": email})
+
     def get(self):
-        # if we have an error, make a <p> to display it
-        error = self.request.get("error")
-        error_element = "<p class='error'>" + error + "</p>" if error else ""
-
-        # combine all the pieces to build the content of our response
-        main_content = add_form + error_element
-        content = page_header + main_content + page_footer
-        self.response.write(content)
+        self.write_form()
 
     def post(self):
-        user_name = self.request.get("username")
-        password = self.request.get("password")
-        password_verify = self.request.get("verify")
+        have_error = False
+        user_username = self.request.get('username')
+        user_password = self.request.get('password')
+        user_verify = self.request.get('verify')
+        user_email = self.request.get('email')
+
+        errorUsername = ""
+        errorPassword = ""
+        errorVerify = ""
+        errorEmail = ""
+
+        if not valid_username(user_username):
+            errorUsername = "Please enter a valid username"
+            have_error = True
+
+        if not valid_password(user_password):
+            errorPassword = "Please enter a valid password"
+            have_error = True
+        elif user_password != user_verify:
+            errorVerify = "Your passwords do not match"
+            have_error = True
+
         # e-mail is optional, but if entered, verify.
-        email = self.request.get("email")
+        if not valid_email(user_email):
+            errorEmail = "Please enter a valid e-mail address"
+            have_error = True
 
+        if have_error:
+            self.write_form(errorUsername, errorPassword, errorVerify, errorEmail, user_username, user_email)
+        else:
+            username = self.request.get('username')
+            self.redirect('/welcome?username=%s' % username)
 
-        if user_name != username_regex.match(user_name):
-            error = "Please enter a valid username"
-            error_escaped = cgi.escape(error, quote=True)
-            self.redirect("/?error=" + error_escaped)
-
-        elif password != password_regex.match(password):
-            error = "Please enter a valid password"
-            error_escaped = cgi.escape(error, quote=True)
-            self.redirect("/?error=" + error_escaped)
-
-        elif password != verify:
-            error = "Your passwords do not match"
-            error_escaped = cgi.escape(error, quote=True)
-            self.redirect("/?error=" + error_escaped)
-
-        elif email != email_regex.match(email):
-            error = "Please enter a valid e-mail address"
-            error_escaped = cgi.escape(error, quote=True)
-            self.redirect("/?error=" + error_escaped)
-
-        content = "<h5>" + "Welcome " + user_name + "</h5"
-        self.response.write(content)
-
-
-
-
-
-
-# Example from crossed_off_movie in Flicklist:
-# """
-# crossed_off_movie = self.request.get("crossed-off-movie")
-# if (crossed_off_movie in getCurrentWatchlist()) == False:
-#     # the user tried to cross off a movie that isn't in their list,
-#     # so we redirect back to the front page and yell at them
-#
-#     # make a helpful error message
-#     error = "'{0}' is not in your Watchlist, so you can't cross it off!".format(crossed_off_movie)
-#     error_escaped = cgi.escape(error, quote=True)
-#
-#     # redirect to homepage, and include error as a query parameter in the URL
-#     self.redirect("/?error=" + error_escaped)
-#
-# # if we didn't redirect by now, then all is well
-# crossed_off_movie_element = "<strike>" + crossed_off_movie + "</strike>"
-# confirmation = crossed_off_movie_element + " has been crossed off your Watchlist."
-# content = page_header + "<p>" + confirmation + "</p>" + page_footer
-# self.response.write(content)
-# """
-
+class Welcome(webapp2.RequestHandler):
+    def get(self):
+        username = self.request.get('username')
+        content = "Welcome " + username + "!"
+        self.response.out.write(content)
 
 app = webapp2.WSGIApplication([
-    ('/', MainHandler)
+    ('/', SignUp),
+    ('/welcome', Welcome)
 ], debug=True)
 
-# """
-# # First try, worked but ugly bc text boxes didn't line up!
-# # add_form = """
-# # <form action="/add" method="post">
-# #     <label>
-# #         Username
-# #         <input type="text" name="username"/>
-# #         <p></p>
-# #     </label>
-# #     <label>
-# #         Password
-# #         <input type="text" name="password"/>
-# #         <p></p>
-# #     </label>
-# #     <label>
-# #         Verify Password
-# #         <input type="text" name="verify-password"/>
-# #         <p></p>
-# #     </label>
-# #     <label>
-# #         E-mail (optional)
-# #         <input type="email" name="e-mail-optional"/>
-# #         <p></p>
-# #     </label>
-# #     <input type="submit"/>
-# # </form>
-# # """
-# # content = page_header + add_form + page_footer
-# # self.response.write(content)
-#
-# # def post(self):
-# #     edit_header = "<h4>Welcome </h4>"
-# #
-# #
-# #
-# #     self.response.write(add_form)
-# """
+
+
+# From Slack
+# class MainHandler(webapp2.RequestHandler):
+    # def write_form(self):
+
+    # def get(self):
+        # content = write_form()
+        # self.response.write(content)
+
+    # def post(self):
+       #add a redirect upon successful input
+
+# class SuccessHandler(webapp2.RequestHandler):
+#     def get(self):
+        #get the username parameter
+        #use self.response.write() to create a success message
